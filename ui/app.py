@@ -99,7 +99,7 @@ target_size = st.sidebar.select_slider(
 )
 
 margin = st.sidebar.slider("外边距保留 (Margin px)", min_value=0, max_value=20, value=8)
-dilation = st.sidebar.slider("白色贴纸描边扩展 (Border Protect)", min_value=0, max_value=6, value=2)
+dilation = st.sidebar.slider("白色贴纸描边扩展 (Border Protect)", min_value=0, max_value=6, value=0, help="默认 0。若贴纸白色边缘有毛刺可微调，本工具会自动阻止黑底渗入。")
 
 st.sidebar.markdown("---")
 wechat_online = WeChatBridge.is_wechat_running()
@@ -212,9 +212,12 @@ if image_to_process is not None:
 
             for col, sticker in zip(cols, row_stickers):
                 with col:
-                    st.markdown(f"**表情 #{sticker.index:02d}** ({sticker.image.width}×{sticker.image.height} PNG)")
-                    # Show image with checkerboard
-                    st.image(sticker.image, width=200)
+                    # Render directly inside transparent-bg div for crisp checkerboard preview
+                    import base64
+                    buf = io.BytesIO()
+                    sticker.image.save(buf, format="PNG")
+                    b64_str = base64.b64encode(buf.getvalue()).decode()
+                    st.markdown(f'<div class="transparent-bg" style="margin-bottom: 8px;"><img src="data:image/png;base64,{b64_str}" width="180" style="display:block;"/></div>', unsafe_allow_html=True)
 
                     sticker_file_path = saved_paths[sticker.index - 1]
                     btn_col1, btn_col2, btn_col3 = st.columns(3)

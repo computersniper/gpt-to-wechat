@@ -46,7 +46,7 @@ class StickerSegmenter:
         min_area: int = 8000,
         margin: int = 8,
         target_size: int = 240,
-        dilation_radius: int = 2
+        dilation_radius: int = 0
     ):
         """
         :param bg_threshold: Grayscale brightness threshold below which pixels are treated as background.
@@ -144,21 +144,29 @@ class StickerSegmenter:
             maxr_padded = min(h, maxr + self.margin)
             maxc_padded = min(w, maxc + self.margin)
 
-            # Crop array and component mask
+            # Crop array, grayscale, and component mask
             cropped_arr = arr[minr_padded:maxr_padded, minc_padded:maxc_padded]
-            cropped_mask = (labels[minr_padded:maxr_padded, minc_padded:maxc_padded] == obj_label)
+            cropped_gray = gray[minr_padded:maxr_padded, minc_padded:maxc_padded]
+            base_mask = (labels[minr_padded:maxr_padded, minc_padded:maxc_padded] == obj_label)
 
-            # Slightly dilate mask to ensure smooth white die-cut borders are completely included
+            # Precise foreground mask: filter out dark background
+            cropped_mask = base_mask & (cropped_gray > self.bg_threshold)
+            cropped_mask = ndimage.binary_fill_holes(cropped_mask)
+
+            # Optional boundary smoothing without expanding into dark background
             if self.dilation_radius > 0:
                 if HAS_SKIMAGE:
-                    cropped_mask = morphology.binary_dilation(cropped_mask, morphology.disk(self.dilation_radius))
+                    dilated = morphology.binary_dilation(cropped_mask, morphology.disk(self.dilation_radius))
                 else:
                     r = self.dilation_radius
                     y, x = np.ogrid[-r:r+1, -r:r+1]
                     struct = (x * x + y * y) <= (r * r)
-                    cropped_mask = ndimage.binary_dilation(cropped_mask, structure=struct)
+                    dilated = ndimage.binary_dilation(cropped_mask, structure=struct)
+                # Restrict to non-background pixels to guarantee zero black border bleed
+                cropped_mask = dilated & (cropped_gray > max(15, self.bg_threshold - 10))
+                cropped_mask = ndimage.binary_fill_holes(cropped_mask)
 
-            # Assemble RGBA
+            # Assemble RGBA with 100% pure transparent canvas outside sticker
             rgba = np.zeros((cropped_arr.shape[0], cropped_arr.shape[1], 4), dtype=np.uint8)
             rgba[:, :, :3] = cropped_arr
             rgba[:, :, 3] = np.where(cropped_mask, 255, 0)
