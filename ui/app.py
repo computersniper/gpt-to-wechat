@@ -13,6 +13,16 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+import importlib
+import core.wechat_bridge
+import core.segmenter
+import core.exporter
+
+# Force dynamic reload of core modules to prevent stale class definitions in long-running Streamlit processes
+importlib.reload(core.wechat_bridge)
+importlib.reload(core.segmenter)
+importlib.reload(core.exporter)
+
 from core.segmenter import StickerSegmenter
 from core.wechat_bridge import WeChatBridge
 from core.exporter import StickerExporter
