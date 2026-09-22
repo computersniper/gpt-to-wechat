@@ -11,7 +11,12 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 from PIL import Image
 from scipy import ndimage
-from skimage import measure, morphology
+
+try:
+    from skimage import measure, morphology
+    HAS_SKIMAGE = True
+except ImportError:
+    HAS_SKIMAGE = False
 
 
 class StickerResult:
@@ -88,28 +93,50 @@ class StickerSegmenter:
         filled_mask = ndimage.binary_fill_holes(foreground_mask)
 
         # Remove tiny noise specs
-        clean_mask = morphology.remove_small_objects(filled_mask, min_size=max(1000, self.min_area // 4))
+        min_component_size = max(1000, self.min_area // 4)
+        if HAS_SKIMAGE:
+            clean_mask = morphology.remove_small_objects(filled_mask, min_size=min_component_size)
+            labels, num_features = ndimage.label(clean_mask)
+            objects = measure.regionprops(labels)
+            valid_objects = [
+                (obj.label, obj.bbox, obj.area, obj.centroid)
+                for obj in objects if obj.area >= self.min_area
+            ]
+            if not valid_objects:
+                fallback_min = max(2000, self.min_area // 2)
+                valid_objects = [
+                    (obj.label, obj.bbox, obj.area, obj.centroid)
+                    for obj in objects if obj.area >= fallback_min
+                ]
+        else:
+            labels, num_features = ndimage.label(filled_mask)
+            areas = ndimage.sum(filled_mask, labels, range(1, num_features + 1))
+            slices = ndimage.find_objects(labels)
+            centroids = ndimage.center_of_mass(filled_mask, labels, range(1, num_features + 1))
 
-        # Label connected components
-        labels, num_features = ndimage.label(clean_mask)
-        objects = measure.regionprops(labels)
+            valid_objects = []
+            for i in range(num_features):
+                if areas[i] >= self.min_area:
+                    slc = slices[i]
+                    bbox = (slc[0].start, slc[1].start, slc[0].stop, slc[1].stop)
+                    valid_objects.append((i + 1, bbox, areas[i], centroids[i]))
 
-        # Filter regions by minimum area
-        valid_objects = [obj for obj in objects if obj.area >= self.min_area]
-
-        if not valid_objects:
-            # Fallback if threshold is too strict
-            fallback_min = max(2000, self.min_area // 2)
-            valid_objects = [obj for obj in objects if obj.area >= fallback_min]
+            if not valid_objects:
+                fallback_min = max(2000, self.min_area // 2)
+                for i in range(num_features):
+                    if areas[i] >= fallback_min:
+                        slc = slices[i]
+                        bbox = (slc[0].start, slc[1].start, slc[0].stop, slc[1].stop)
+                        valid_objects.append((i + 1, bbox, areas[i], centroids[i]))
 
         # Sort in reading order (grid layout: roughly top-to-bottom, left-to-right)
         row_bucket_size = max(50, h // 4)
-        valid_objects.sort(key=lambda x: (round(x.centroid[0] / row_bucket_size), x.centroid[1]))
+        valid_objects.sort(key=lambda x: (round(x[3][0] / row_bucket_size), x[3][1]))
 
         results: List[StickerResult] = []
 
-        for idx, obj in enumerate(valid_objects, 1):
-            minr, minc, maxr, maxc = obj.bbox
+        for idx, (obj_label, bbox, obj_area, _) in enumerate(valid_objects, 1):
+            minr, minc, maxr, maxc = bbox
 
             # Apply margin
             minr_padded = max(0, minr - self.margin)
@@ -119,11 +146,17 @@ class StickerSegmenter:
 
             # Crop array and component mask
             cropped_arr = arr[minr_padded:maxr_padded, minc_padded:maxc_padded]
-            cropped_mask = (labels[minr_padded:maxr_padded, minc_padded:maxc_padded] == obj.label)
+            cropped_mask = (labels[minr_padded:maxr_padded, minc_padded:maxc_padded] == obj_label)
 
             # Slightly dilate mask to ensure smooth white die-cut borders are completely included
             if self.dilation_radius > 0:
-                cropped_mask = morphology.binary_dilation(cropped_mask, morphology.disk(self.dilation_radius))
+                if HAS_SKIMAGE:
+                    cropped_mask = morphology.binary_dilation(cropped_mask, morphology.disk(self.dilation_radius))
+                else:
+                    r = self.dilation_radius
+                    y, x = np.ogrid[-r:r+1, -r:r+1]
+                    struct = (x * x + y * y) <= (r * r)
+                    cropped_mask = ndimage.binary_dilation(cropped_mask, structure=struct)
 
             # Assemble RGBA
             rgba = np.zeros((cropped_arr.shape[0], cropped_arr.shape[1], 4), dtype=np.uint8)
@@ -147,7 +180,7 @@ class StickerSegmenter:
                 index=idx,
                 image=final_img,
                 bbox=(minr_padded, minc_padded, maxr_padded, maxc_padded),
-                area=obj.area
+                area=int(obj_area)
             )
 
             if output_dir:
