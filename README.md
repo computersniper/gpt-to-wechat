@@ -52,10 +52,12 @@ ChatGPT 新增的表情包生成功能（Stickers）非常受欢迎，但官方�
 - 🔍 **智能连通域与网格检测 (Smart Segmentation)**：基于形态学孔洞填充与轮廓过滤算法，完美识别大图中的 9 个（或任意数量）表情区域。
 - ✂️ **黑底智能抠除与描边保护 (Border Preservation)**：自适应膨胀掩模，去除纯黑底色同时 100% 保护白色描边与主体颜色。
 - 📐 **微信标准规格自适应 (WeChat Spec Optimization)**：自动居中并采用 Lanczos 高阶插值采样重调为 240×240 / 300×300 规范表情。
-- 📋 **免鼠标一键直达 (Zero-Click Bridge)**：单张一键推入系统剪贴板，支持在微信聊天窗口中直接粘贴发送。
+- 📋 **一键批量复制全部 (Batch Copy via CF_HDROP)**：基于 Windows Shell `CF_HDROP` 原生协议，支持将全部 9 个表情同时复制到剪贴板，在微信聊天框中一次性全选粘贴发送！
+- 🚀 **免鼠标一键推送 (Zero-Click Auto Push)**：支持免物理鼠标移动，直接将单个或全部 9 个表情自动推送到当前激活的微信输入区。
 - 📦 **批量打包导出 (Batch Export)**：一键将所有切分出来的透明表情打包为 ZIP 压缩包，方便在微信“管理表情”中批量全选导入。
-- 🖥️ **精美 Web 可视化操作界面 (Modern WebUI)**：提供棋盘格透明背景实时预览、阈值微调滑块与一键下载。
-- 💻 **全功能 CLI 命令行**：支持无头环境批量处理脚本集成。
+- 🖥️ **精美 Web 可视化操作界面 (Modern WebUI)**：提供棋盘格透明背景实时预览、阈值微调滑块与一键批量操作。
+- 🤖 **原生 MCP Server 接入**：无缝对接 Cursor、Claude Desktop、Antigravity，让 AI Agent 直接调用。
+- 💻 **全功能 CLI 命令行**：支持无头环境批量处理与脚本集成。
 
 ---
 
@@ -84,9 +86,9 @@ streamlit run ui/app.py
 启动后浏览器将自动打开交互界面：
 1. 上传 ChatGPT 生成的表情包大图（或点击“🖼️ 加载内置示例图”快速体验）。
 2. 界面将实时显示切分出的 9 个透明表情。
-3. 点击任意表情下方的 **『📋 复制』** 按钮。
-4. 切换到微信（如“文件传输助手”或任意聊天窗口），按下 **`Ctrl + V`** 发送！
-5. 在聊天记录中**右键该图片 ➔ “添加到表情”**，即可永久添加到表情收藏夹！
+3. 点击顶部的 **『📋 一键复制全部表情 (到剪贴板)』** 或 **『🚀 一键推送全部表情到微信』**。
+4. 切换到微信（如“文件传输助手”或任意聊天窗口），按下 **`Ctrl + V`**，**9 个表情将一次性全部排队粘贴**进输入框，按回车直接发送！
+5. 在聊天记录中**右键任意图片 ➔ “添加到表情”**，即可永久添加到表情收藏夹！
 
 ---
 
@@ -96,11 +98,14 @@ streamlit run ui/app.py
 # 智能切分大图并保存到 output/stickers 目录
 python cli.py process assets/sample_chatgpt_stickers.jpg
 
+# 切分同时将全部 9 个表情一次性复制到系统剪贴板 (随时 Ctrl+V 批量发微信)
+python cli.py process assets/sample_chatgpt_stickers.jpg --copy-all
+
+# 切分同时免鼠标全自动批量推送到微信
+python cli.py process assets/sample_chatgpt_stickers.jpg --push-wechat
+
 # 切分同时打包为 ZIP 文件
 python cli.py process assets/sample_chatgpt_stickers.jpg --zip
-
-# 自定义分辨率与背景阈值
-python cli.py process input.png --size 300 --threshold 40 --output my_stickers/
 ```
 
 **CLI 参数说明**：
@@ -113,7 +118,8 @@ python cli.py process input.png --size 300 --threshold 40 --output my_stickers/
 | `--margin` | 贴纸外边距填充像素 | `8` |
 | `--zip` | 是否额外导出打包 ZIP | `False` |
 | `--copy-first`| 处理完成后自动将第1张表情放入剪贴板 | `False` |
-| `--push-wechat`| 处理完成后免鼠标自动推送到微信 | `False` |
+| `--copy-all` | 处理完成后自动将全部表情一次性复制到剪贴板 | `False` |
+| `--push-wechat`| 处理完成后免鼠标自动批量推送到微信 | `False` |
 
 ---
 
@@ -141,8 +147,9 @@ python cli.py mcp
 
 #### 提供的 MCP 工具清单 (Tools)：
 - `split_chatgpt_stickers`: 自动识别并切分 ChatGPT 表情包大图，生成透明 PNG 列表。
-- `push_sticker_to_wechat`: 免物理鼠标移动，将表情推入当前激活的微信聊天窗口。
-- `copy_sticker_to_clipboard`: 将指定表情放入 Windows 系统剪贴板（PNG/DIB 复合格式）。
+- `copy_all_stickers_to_clipboard`: 将全部切好的表情一次性复制到 Windows 剪贴板（支持微信 Ctrl+V 批量粘贴）。
+- `push_sticker_to_wechat`: 免物理鼠标移动，将单个或全部表情推入当前激活的微信聊天窗口。
+- `copy_sticker_to_clipboard`: 将单张指定表情放入 Windows 系统剪贴板。
 - `package_stickers_to_zip`: 将表情大图切片打包为 ZIP 供微信一次性全选导入。
 - `check_wechat_status`: 检查 Windows 当前微信进程运行状态与窗口状态。
 
