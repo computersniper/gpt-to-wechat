@@ -92,40 +92,70 @@ def copy_sticker_to_clipboard(image_path: str) -> Dict[str, Any]:
     ok = WeChatBridge.copy_image_to_clipboard(image_path)
     return {
         "success": ok,
-        "message": "Sticker copied to Windows clipboard in PNG and DIB formats. Press Ctrl+V in WeChat to paste." if ok else "Failed to access clipboard."
+        "message": "Sticker copied to Windows clipboard. Press Ctrl+V in WeChat to paste." if ok else "Failed to access clipboard."
     }
 
 
 @mcp.tool()
-def push_sticker_to_wechat(image_path: str) -> Dict[str, Any]:
+def copy_all_stickers_to_clipboard(file_paths: List[str]) -> Dict[str, Any]:
     """
-    Pushes a sticker image directly to the active WeChat chat window without moving physical mouse.
+    Copies MULTIPLE transparent sticker images simultaneously into Windows system clipboard using CF_HDROP.
+    Allows pasting ALL stickers at once into WeChat chat box via Ctrl+V.
 
-    :param image_path: Path to the sticker image to send.
+    :param file_paths: List of absolute paths to sticker PNG files.
     :return: Operation result.
     """
-    if not os.path.exists(image_path):
-        return {"error": f"File not found: {image_path}"}
+    valid_paths = [os.path.abspath(p) for p in file_paths if os.path.exists(p)]
+    if not valid_paths:
+        return {"error": "No valid sticker files found in the provided paths."}
+
+    ok = WeChatBridge.copy_files_to_clipboard(valid_paths)
+    return {
+        "success": ok,
+        "copied_count": len(valid_paths),
+        "message": f"Successfully copied all {len(valid_paths)} stickers to clipboard! Press Ctrl+V in WeChat to paste all at once." if ok else "Failed to copy files to clipboard."
+    }
+
+
+@mcp.tool()
+def push_sticker_to_wechat(image_path: Optional[str] = None, image_paths: Optional[List[str]] = None) -> Dict[str, Any]:
+    """
+    Pushes one or multiple sticker images directly to the active WeChat chat window without moving physical mouse.
+
+    :param image_path: Path to a single sticker image to send (optional).
+    :param image_paths: List of sticker image paths to send simultaneously (optional).
+    :return: Operation result.
+    """
+    targets = []
+    if image_paths:
+        targets.extend([p for p in image_paths if os.path.exists(p)])
+    if image_path and os.path.exists(image_path) and image_path not in targets:
+        targets.append(image_path)
+
+    if not targets:
+        return {"error": "No valid image paths provided."}
 
     if not WeChatBridge.is_wechat_running():
         return {"error": "WeChat is not currently running. Please launch and login to WeChat first."}
 
-    # 1. Put into clipboard
-    copied = WeChatBridge.copy_image_to_clipboard(image_path)
-    if not copied:
-        return {"error": "Failed to copy image to clipboard."}
+    if len(targets) == 1:
+        copied = WeChatBridge.copy_image_to_clipboard(targets[0])
+        pasted = WeChatBridge.paste_to_active_chat()
+    else:
+        pasted = WeChatBridge.paste_files_to_active_chat(targets)
+        copied = pasted or WeChatBridge.copy_files_to_clipboard(targets)
 
-    # 2. Paste to WeChat
-    pasted = WeChatBridge.paste_to_active_chat()
     if pasted:
         return {
             "status": "success",
-            "message": "Sticker pasted into active WeChat window! User can press Enter to send, then right click -> Add to Stickers."
+            "pushed_count": len(targets),
+            "message": f"{len(targets)} sticker(s) pasted into active WeChat window! User can press Enter to send, then right click -> Add to Stickers."
         }
     else:
         return {
             "status": "partial_success",
-            "message": "Sticker copied to clipboard, but could not focus WeChat window. User can manually press Ctrl+V."
+            "pushed_count": len(targets) if copied else 0,
+            "message": f"{len(targets)} sticker(s) copied to clipboard, but could not focus WeChat window. User can manually press Ctrl+V."
         }
 
 

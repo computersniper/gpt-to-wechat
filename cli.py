@@ -58,16 +58,20 @@ def process_command(args):
         StickerExporter.export_to_zip(stickers, zip_path, prefix=args.prefix)
         console.print(f"[bold blue]📦 打包完成: {zip_path}[/bold blue]")
 
-    if args.copy_first and stickers:
-        WeChatBridge.copy_image_to_clipboard(stickers[0].image)
+    if args.copy_all and stickers:
+        paths = [s.path for s in stickers if s.path and os.path.exists(s.path)]
+        WeChatBridge.copy_files_to_clipboard(paths)
+        console.print(f"[bold magenta]📋 全部 {len(paths)} 个表情已复制到系统剪贴板！可以直接在微信中按 Ctrl+V 一次性批量粘贴。[/bold magenta]")
+    elif args.copy_first and stickers:
+        WeChatBridge.copy_image_to_clipboard(stickers[0].path or stickers[0].image)
         console.print("[bold magenta]📋 表情 #01 已复制到系统剪贴板！可以直接在微信中 Ctrl+V 粘贴。[/bold magenta]")
 
     if args.push_wechat and stickers:
-        console.print("[bold green]🚀 正在免鼠标推送到微信...[/bold green]")
-        WeChatBridge.copy_image_to_clipboard(stickers[0].image)
-        ok = WeChatBridge.paste_to_active_chat()
+        paths = [s.path for s in stickers if s.path and os.path.exists(s.path)]
+        console.print(f"[bold green]🚀 正在免鼠标批量推送全部 {len(paths)} 个表情到微信...[/bold green]")
+        ok = WeChatBridge.paste_files_to_active_chat(paths)
         if ok:
-            console.print("[bold green]✅ 成功推送到微信输入区！在微信中按 Enter 发送即可！[/bold green]")
+            console.print("[bold green]✅ 成功将全部表情推送到微信输入区！在微信中按 Enter 发送即可！[/bold green]")
         else:
             console.print("[bold yellow]⚠️ 未能自动获取微信窗口焦点，表情已在剪贴板中，请在微信中按 Ctrl+V 粘贴。[/bold yellow]")
 
@@ -101,7 +105,8 @@ def main():
     p_proc.add_argument("--prefix", default="sticker", help="文件名前缀 (默认 sticker)")
     p_proc.add_argument("--zip", action="store_true", help="是否同时打包为 ZIP 文件")
     p_proc.add_argument("--copy-first", action="store_true", help="处理后自动将第一张表情复制到剪贴板")
-    p_proc.add_argument("--push-wechat", action="store_true", help="处理后免鼠标自动粘贴推送到微信")
+    p_proc.add_argument("--copy-all", action="store_true", help="处理后自动将全部表情一次性复制到剪贴板")
+    p_proc.add_argument("--push-wechat", action="store_true", help="处理后免鼠标自动批量粘贴推送到微信")
 
     # UI command
     subparsers.add_parser("ui", help="启动可视化 Web 界面")

@@ -93,18 +93,71 @@ class WeChatBridge:
         return None
 
     @staticmethod
+    def copy_files_to_clipboard(file_paths: List[str]) -> bool:
+        """
+        Copies multiple files into Windows clipboard using CF_HDROP format.
+        Allows pasting ALL images/files simultaneously into WeChat (Ctrl+V) or Windows Explorer!
+        """
+        if not HAS_WIN32:
+            return False
+
+        WeChatBridge._attach_default_desktop()
+        import struct
+
+        abs_paths = [os.path.abspath(p) for p in file_paths if os.path.exists(p)]
+        if not abs_paths:
+            return False
+
+        # Build DROPFILES structure (20 bytes header + UTF-16LE double-null terminated strings)
+        offset = 20
+        dropfiles = struct.pack('IIIII', offset, 0, 0, 0, 1)
+        file_bytes = ('\0'.join(abs_paths) + '\0\0').encode('utf-16le')
+        data = dropfiles + file_bytes
+
+        for attempt in range(5):
+            try:
+                win32clipboard.OpenClipboard()
+                win32clipboard.EmptyClipboard()
+                win32clipboard.SetClipboardData(win32con.CF_HDROP, data)
+                win32clipboard.CloseClipboard()
+                return True
+            except Exception:
+                time.sleep(0.05)
+                try:
+                    win32clipboard.CloseClipboard()
+                except Exception:
+                    pass
+        return False
+
+    @staticmethod
     def copy_image_to_clipboard(image_input: Union[str, Image.Image]) -> bool:
         """
-        Copies an image into the Windows system clipboard using both standard DIB
-        and the registered 'PNG' format so that full Alpha transparency is preserved in WeChat.
+        Copies an image into the Windows system clipboard using standard DIB,
+        registered 'PNG' format, and CF_HDROP file path (if available)
+        so that full Alpha transparency is preserved and WeChat accepts it reliably.
         """
         if not HAS_WIN32:
             raise RuntimeError("pywin32 is required on Windows for clipboard operations.")
 
+        WeChatBridge._attach_default_desktop()
+        import struct
+        import tempfile
+
+        file_path = None
         if isinstance(image_input, str):
+            file_path = os.path.abspath(image_input)
             img = Image.open(image_input)
         elif isinstance(image_input, Image.Image):
             img = image_input
+            # Save to temporary PNG so CF_HDROP is also available for apps like WeChat 4.x
+            try:
+                temp_dir = os.path.join(tempfile.gettempdir(), "gpt_to_wechat")
+                os.makedirs(temp_dir, exist_ok=True)
+                temp_path = os.path.join(temp_dir, f"sticker_{int(time.time()*1000)}.png")
+                img.save(temp_path, format="PNG")
+                file_path = os.path.abspath(temp_path)
+            except Exception:
+                file_path = None
         else:
             raise TypeError("Unsupported image_input type")
 
@@ -115,9 +168,7 @@ class WeChatBridge:
         png_output.close()
 
         # 2. Prepare BMP / DIB byte stream (Fallback for legacy apps)
-        # Note: BMP requires stripping the 14-byte BITMAPFILEHEADER to get CF_DIB
         bmp_output = io.BytesIO()
-        # Convert RGBA to RGB with white background for fallback DIB
         if img.mode in ("RGBA", "LA"):
             bg = Image.new("RGB", img.size, (255, 255, 255))
             bg.paste(img, mask=img.split()[-1])
@@ -127,11 +178,23 @@ class WeChatBridge:
         dib_data = bmp_output.getvalue()[14:]
         bmp_output.close()
 
-        # 3. Write to Windows Clipboard with retry
+        # 3. Prepare CF_HDROP data if file_path is available
+        hdrop_data = None
+        if file_path and os.path.exists(file_path):
+            offset = 20
+            dropfiles = struct.pack('IIIII', offset, 0, 0, 0, 1)
+            file_bytes = (file_path + '\0\0').encode('utf-16le')
+            hdrop_data = dropfiles + file_bytes
+
+        # 4. Write to Windows Clipboard with retry
         for attempt in range(5):
             try:
                 win32clipboard.OpenClipboard()
                 win32clipboard.EmptyClipboard()
+
+                # Register and set CF_HDROP (Highest priority for WeChat file send)
+                if hdrop_data:
+                    win32clipboard.SetClipboardData(win32con.CF_HDROP, hdrop_data)
 
                 # Register PNG format on Windows clipboard
                 png_format = win32clipboard.RegisterClipboardFormat("PNG")
@@ -186,3 +249,13 @@ class WeChatBridge:
             return True
         except Exception:
             return False
+
+    @staticmethod
+    def paste_files_to_active_chat(file_paths: List[str], hwnd: Optional[int] = None) -> bool:
+        """
+        Copies multiple files to clipboard and automatically pastes them into WeChat.
+        """
+        if not WeChatBridge.copy_files_to_clipboard(file_paths):
+            return False
+        return WeChatBridge.paste_to_active_chat(hwnd=hwnd)
+

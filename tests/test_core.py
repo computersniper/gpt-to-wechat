@@ -50,6 +50,13 @@ class TestStickerProcessing(unittest.TestCase):
         running = WeChatBridge.is_wechat_running()
         self.assertIsInstance(running, bool)
 
+    def test_copy_files_to_clipboard(self):
+        import glob
+        files = sorted(glob.glob(os.path.join(project_root, "output", "stickers", "sticker_*.png")))
+        if files:
+            ok = WeChatBridge.copy_files_to_clipboard(files)
+            self.assertTrue(ok)
+
 
 if __name__ == "__main__":
     unittest.main()

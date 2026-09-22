@@ -156,29 +156,53 @@ if image_to_process is not None:
     else:
         st.success(f"✨ 成功切出 {len(stickers)} 个独立表情！已自动去除黑底并生成透明通道。")
 
-        # Batch actions
-        col_act1, col_act2 = st.columns([1, 1])
+        # Auto-export stickers to disk so absolute file paths are immediately available for CF_HDROP
+        output_dir = os.path.join(project_root, "output", "stickers")
+        os.makedirs(output_dir, exist_ok=True)
+        saved_paths = []
+        for s in stickers:
+            file_path = os.path.abspath(os.path.join(output_dir, f"sticker_{s.index:02d}.png"))
+            s.image.save(file_path, format="PNG")
+            saved_paths.append(file_path)
+
+        # Batch actions (Copy All, Push All, Download ZIP)
+        st.markdown("#### ⚡ 批量快捷操作")
+        col_act1, col_act2, col_act3 = st.columns([1.2, 1.2, 1])
+
+        if col_act1.button("📋 一键复制全部表情 (到剪贴板)", type="primary", use_container_width=True):
+            ok = WeChatBridge.copy_files_to_clipboard(saved_paths)
+            if ok:
+                st.success(f"🎉 **成功将全部 {len(saved_paths)} 个透明表情复制到系统剪贴板！**\n\n👉 现在打开微信任意聊天框（如**文件传输助手**），直接按下键盘 **`Ctrl + V`**，9 个表情就会**一次性全部排队粘贴**进输入框，按回车即可全发！")
+                st.toast(f"✅ 全部 {len(saved_paths)} 个表情已复制！切换到微信按 Ctrl+V 即可批量粘贴！", icon="🎉")
+            else:
+                st.error("复制到剪贴板失败，请检查运行环境。")
+
+        if col_act2.button("🚀 一键推送全部表情到微信", use_container_width=True):
+            if not wechat_online:
+                st.warning("未检测到运行中的微信，请先登录并打开微信。")
+            else:
+                ok = WeChatBridge.paste_files_to_active_chat(saved_paths)
+                if ok:
+                    st.success(f"🚀 **全部 {len(saved_paths)} 个表情已免鼠标自动推送到微信！**\n\n👉 在微信输入框中直接按下 **回车 (Enter)** 即可一次性发送！")
+                    st.toast(f"🎉 全部 {len(saved_paths)} 个表情已推送到微信！按回车即可发送！", icon="🚀")
+                else:
+                    ok_copy = WeChatBridge.copy_files_to_clipboard(saved_paths)
+                    if ok_copy:
+                        st.info("已将全部表情复制到剪贴板！请切换到微信按 Ctrl+V 粘贴。")
+                    else:
+                        st.error("未能找到微信主窗口，请确保微信界面未被最小化。")
+
         zip_bytes = StickerExporter.export_to_bytes_zip(stickers, prefix="gpt_wechat_sticker")
-        col_act1.download_button(
-            label="📦 一键打包下载全部 (ZIP)",
+        col_act3.download_button(
+            label="📦 打包下载全部 (ZIP)",
             data=zip_bytes,
             file_name="chatgpt_wechat_stickers.zip",
             mime="application/zip",
             use_container_width=True
         )
 
-        if col_act2.button("🚀 一键推送到微信 (免鼠标自动粘贴)", use_container_width=True):
-            if not wechat_online:
-                st.warning("未检测到运行中的微信，请先登录并打开微信。")
-            else:
-                ok_copy = WeChatBridge.copy_image_to_clipboard(stickers[0].image)
-                ok_paste = WeChatBridge.paste_to_active_chat()
-                if ok_paste:
-                    st.toast("🎉 已成功将表情 #01 免鼠标推送到微信！在微信中按回车即可发送！", icon="🚀")
-                elif ok_copy:
-                    st.toast("📋 表情 #01 已复制到剪贴板！切换到微信按 Ctrl+V 即可粘贴！", icon="✅")
-
-        st.markdown("### 🎨 表情列表（点击可单独复制或下载）")
+        st.markdown("---")
+        st.markdown("### 🎨 表情切片列表（可单独复制、推送或下载）")
 
         # Grid display (3 items per row)
         cols_per_row = 3
@@ -192,19 +216,29 @@ if image_to_process is not None:
                     # Show image with checkerboard
                     st.image(sticker.image, width=200)
 
-                    # Copy to clipboard button
-                    btn_col1, btn_col2 = st.columns(2)
+                    sticker_file_path = saved_paths[sticker.index - 1]
+                    btn_col1, btn_col2, btn_col3 = st.columns(3)
+
+                    # Copy single sticker
                     if btn_col1.button(f"📋 复制", key=f"copy_{sticker.index}", use_container_width=True):
-                        ok = WeChatBridge.copy_image_to_clipboard(sticker.image)
+                        ok = WeChatBridge.copy_image_to_clipboard(sticker_file_path)
                         if ok:
-                            st.toast(f"✅ 表情 #{sticker.index:02d} 已写入系统剪贴板！\n切换到微信按 Ctrl+V 即可发送或添加为表情！", icon="🎉")
+                            st.toast(f"✅ 表情 #{sticker.index:02d} 已复制！在微信按 Ctrl+V 即可粘贴！", icon="🎉")
                         else:
-                            st.error("复制到剪贴板失败，请确保在 Windows 环境下运行。")
+                            st.error("复制失败")
+
+                    # Push single sticker to WeChat
+                    if btn_col2.button(f"🚀 推送", key=f"push_{sticker.index}", use_container_width=True):
+                        ok = WeChatBridge.paste_files_to_active_chat([sticker_file_path])
+                        if ok:
+                            st.toast(f"🚀 表情 #{sticker.index:02d} 已推送到微信！", icon="🚀")
+                        else:
+                            st.error("推送失败")
 
                     # Download single image
                     img_byte_arr = io.BytesIO()
                     sticker.image.save(img_byte_arr, format='PNG')
-                    btn_col2.download_button(
+                    btn_col3.download_button(
                         label="📥 下载",
                         data=img_byte_arr.getvalue(),
                         file_name=f"sticker_{sticker.index:02d}.png",
@@ -216,9 +250,16 @@ if image_to_process is not None:
 
         st.markdown("""
         ---
-        ### 📖 微信添加表情超简单指南：
-        1. **快速单张添加**：在上方直接点击 **『📋 复制』**，打开微信（如“文件传输助手”或任意聊天窗口），按下键盘 **`Ctrl + V`** 发送。随后在聊天窗口中**右键该图片 ➔ “添加到表情”**即可永久收藏！
-        2. **批量统一添加**：点击 **『📦 一键打包下载全部 (ZIP)』** 解压到文件夹，在微信中点击聊天输入框的表情图标 ➔ 点击“添加表情（+号）” ➔ “我添加的表情” ➔ 滑到最下方点击“+”即可一次性全选导入！
+        ### 📖 微信添加表情与批量使用指南：
+        1. **一次性全发微信（最推荐）**：
+           * 点击上方的 **『📋 一键复制全部表情』**；
+           * 打开微信聊天窗口（例如“文件传输助手”或好友聊天），按下键盘 **`Ctrl + V`**，**9 个透明表情会全部整齐粘贴到输入框**；
+           * 按回车直接发送！在聊天中右键任意表情即可「添加到表情」！
+        2. **免鼠标全自动推送**：
+           * 打开微信保持在聊天界面，点击上方的 **『🚀 一键推送全部表情到微信』**，程序会自动激活微信并将 9 个表情同时粘贴好，你只要敲一下回车就搞定！
+        3. **批量永久导入表情库**：
+           * 点击 **『📦 打包下载全部 (ZIP)』** 解压到本地文件夹；
+           * 在微信中点击聊天输入框的表情图标 ➔ 点击“添加表情（+号）” ➔ “我添加的表情” ➔ 滑到最下方点击“+”即可一次性多选批量导入！
         """)
 else:
     st.info("👈 请在上方上传 ChatGPT 表情包大图，或点击『🖼️ 加载内置示例图』立即体验！")
