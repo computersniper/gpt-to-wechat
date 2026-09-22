@@ -113,6 +113,38 @@ python cli.py process input.png --size 300 --threshold 40 --output my_stickers/
 | `--margin` | 贴纸外边距填充像素 | `8` |
 | `--zip` | 是否额外导出打包 ZIP | `False` |
 | `--copy-first`| 处理完成后自动将第1张表情放入剪贴板 | `False` |
+| `--push-wechat`| 处理完成后免鼠标自动推送到微信 | `False` |
+
+---
+
+### 4. 接入 MCP Server (Model Context Protocol) 🤖
+
+本项目原生内置了遵循标准 **Model Context Protocol (MCP)** 的服务端，支持无缝接入 **Cursor**、**Claude Desktop**、**Antigravity** 或任何支持 MCP 的 AI Agent 环境！
+
+#### 启动命令
+```bash
+python cli.py mcp
+```
+
+#### 在 Claude Desktop / Cursor 中配置：
+在 `claude_desktop_config.json` 或 Cursor 的 MCP 设置中添加：
+```json
+{
+  "mcpServers": {
+    "gpt-to-wechat": {
+      "command": "python",
+      "args": ["d:/study/vibe-coding/gpt-to-wechat/cli.py", "mcp"]
+    }
+  }
+}
+```
+
+#### 提供的 MCP 工具清单 (Tools)：
+- `split_chatgpt_stickers`: 自动识别并切分 ChatGPT 表情包大图，生成透明 PNG 列表。
+- `push_sticker_to_wechat`: 免物理鼠标移动，将表情推入当前激活的微信聊天窗口。
+- `copy_sticker_to_clipboard`: 将指定表情放入 Windows 系统剪贴板（PNG/DIB 复合格式）。
+- `package_stickers_to_zip`: 将表情大图切片打包为 ZIP 供微信一次性全选导入。
+- `check_wechat_status`: 检查 Windows 当前微信进程运行状态与窗口状态。
 
 ---
 

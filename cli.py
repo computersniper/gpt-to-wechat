@@ -79,6 +79,12 @@ def ui_command(args):
     subprocess.run(cmd)
 
 
+def mcp_command(args):
+    console.print("[bold green]🤖 正在启动 WeChat & ChatGPT Stickers MCP Server (stdio)...[/bold green]")
+    from core.mcp_server import run_server
+    run_server()
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="GPT-to-WeChat: 将 ChatGPT 生成的表情包大图智能切分并适配微信"
@@ -100,12 +106,17 @@ def main():
     # UI command
     subparsers.add_parser("ui", help="启动可视化 Web 界面")
 
+    # MCP command
+    subparsers.add_parser("mcp", help="以 MCP Server (Model Context Protocol) 模式运行")
+
     args = parser.parse_args()
 
     if args.command == "process":
         process_command(args)
     elif args.command == "ui":
         ui_command(args)
+    elif args.command == "mcp":
+        mcp_command(args)
     else:
         # If no arguments provided, show help
         parser.print_help()
