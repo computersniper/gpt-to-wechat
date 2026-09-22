@@ -29,6 +29,19 @@ class WeChatBridge:
     """
 
     @staticmethod
+    def _attach_default_desktop():
+        """Ensures the calling thread is attached to the interactive 'Default' desktop on Windows."""
+        try:
+            import ctypes
+            u32 = ctypes.windll.user32
+            DESKTOP_ALL = 0x01FF
+            hdesk = u32.OpenDesktopW('Default', 0, False, DESKTOP_ALL)
+            if hdesk:
+                u32.SetThreadDesktop(hdesk)
+        except Exception:
+            pass
+
+    @staticmethod
     def is_wechat_running() -> bool:
         """Checks if WeChat / Weixin process is currently active."""
         for p in psutil.process_iter(['name']):
@@ -55,6 +68,7 @@ class WeChatBridge:
         if not HAS_WIN32:
             return None
 
+        WeChatBridge._attach_default_desktop()
         wechat_hwnds = []
 
         def enum_cb(hwnd, extra):
@@ -62,8 +76,8 @@ class WeChatBridge:
                 title = win32gui.GetWindowText(hwnd)
                 cls = win32gui.GetClassName(hwnd)
                 # Typical WeChat window classes and titles
-                if any(k in title for k in ['微信', 'WeChat', '文件传输助手']) or \
-                   any(k in cls for k in ['WeChatMainWndForPC', 'ChatWnd', 'Qt5QWindowIcon', 'Qt6QWindowIcon']):
+                if any(k in title for k in ['微信', 'WeChat', 'Weixin', '文件传输助手']) or \
+                   any(k in cls for k in ['WeChatMainWndForPC', 'ChatWnd', 'Qt51514QWindowIcon', 'Qt5QWindowIcon', 'Qt6QWindowIcon']):
                     _, pid = win32process.GetWindowThreadProcessId(hwnd)
                     extra.append((hwnd, title, cls, pid))
             return True
@@ -141,17 +155,34 @@ class WeChatBridge:
     def paste_to_active_chat(hwnd: Optional[int] = None) -> bool:
         """
         Sends paste command without moving or clicking physical mouse cursor.
+        Brings WeChat window to foreground and sends Ctrl+V key events.
         """
         if not HAS_WIN32:
             return False
 
+        WeChatBridge._attach_default_desktop()
         target_hwnd = hwnd or WeChatBridge.find_wechat_window()
         if not target_hwnd:
             return False
 
         try:
-            # Send WM_PASTE message directly to window
-            win32gui.SendMessage(target_hwnd, win32con.WM_PASTE, 0, 0)
+            import ctypes
+            u32 = ctypes.windll.user32
+            # Restore and bring window to front
+            u32.ShowWindow(target_hwnd, 9)  # SW_RESTORE
+            u32.SetForegroundWindow(target_hwnd)
+            time.sleep(0.25)
+
+            # Synthesize Ctrl+V (pure keyboard message, zero mouse movement)
+            VK_CONTROL = 0x11
+            VK_V = 0x56
+            KEYEVENTF_KEYUP = 0x0002
+
+            u32.keybd_event(VK_CONTROL, 0, 0, 0)
+            u32.keybd_event(VK_V, 0, 0, 0)
+            time.sleep(0.05)
+            u32.keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0)
+            u32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
             return True
         except Exception:
             return False

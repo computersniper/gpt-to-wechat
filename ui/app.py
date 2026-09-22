@@ -157,7 +157,7 @@ if image_to_process is not None:
         st.success(f"✨ 成功切出 {len(stickers)} 个独立表情！已自动去除黑底并生成透明通道。")
 
         # Batch actions
-        col_act1, col_act2, col_act3 = st.columns([2, 2, 2])
+        col_act1, col_act2 = st.columns([1, 1])
         zip_bytes = StickerExporter.export_to_bytes_zip(stickers, prefix="gpt_wechat_sticker")
         col_act1.download_button(
             label="📦 一键打包下载全部 (ZIP)",
@@ -166,6 +166,17 @@ if image_to_process is not None:
             mime="application/zip",
             use_container_width=True
         )
+
+        if col_act2.button("🚀 一键推送到微信 (免鼠标自动粘贴)", use_container_width=True):
+            if not wechat_online:
+                st.warning("未检测到运行中的微信，请先登录并打开微信。")
+            else:
+                ok_copy = WeChatBridge.copy_image_to_clipboard(stickers[0].image)
+                ok_paste = WeChatBridge.paste_to_active_chat()
+                if ok_paste:
+                    st.toast("🎉 已成功将表情 #01 免鼠标推送到微信！在微信中按回车即可发送！", icon="🚀")
+                elif ok_copy:
+                    st.toast("📋 表情 #01 已复制到剪贴板！切换到微信按 Ctrl+V 即可粘贴！", icon="✅")
 
         st.markdown("### 🎨 表情列表（点击可单独复制或下载）")
 
