@@ -93,12 +93,32 @@ st.markdown("""
 # Sidebar settings
 st.sidebar.header("⚙️ 参数配置")
 
+slice_mode_option = st.sidebar.selectbox(
+    "🧩 切分模式 (Slicing Mode)",
+    options=[
+        "自动检测 (推荐，自动识别底色与排版)",
+        "智能 3×3 网格 (9张连图，支持任意底色/棋盘格)",
+        "智能 2×2 网格 (4张连图)",
+        "自适应轮廓识别 (适合暗色不规则排版)"
+    ],
+    index=0,
+    help="ChatGPT 生成的 9 连图推荐使用『自动检测』或『智能 3×3 网格』，能完美分离浅色、白底、伪透明棋盘底或黑底表情。"
+)
+
+mode_map = {
+    "自动检测 (推荐，自动识别底色与排版)": "auto",
+    "智能 3×3 网格 (9张连图，支持任意底色/棋盘格)": "grid_3x3",
+    "智能 2×2 网格 (4张连图)": "grid_2x2",
+    "自适应轮廓识别 (适合暗色不规则排版)": "contour"
+}
+selected_mode = mode_map[slice_mode_option]
+
 bg_threshold = st.sidebar.slider(
     "背景黑度阈值 (Threshold)",
     min_value=10,
     max_value=100,
     value=35,
-    help="识别背景暗色的阈值，值越小对暗色越严格"
+    help="轮廓模式下识别暗色背景的阈值，值越小对暗色越严格"
 )
 
 target_size = st.sidebar.select_slider(
@@ -109,7 +129,7 @@ target_size = st.sidebar.select_slider(
 )
 
 margin = st.sidebar.slider("外边距保留 (Margin px)", min_value=0, max_value=20, value=8)
-dilation = st.sidebar.slider("白色贴纸描边扩展 (Border Protect)", min_value=0, max_value=6, value=0, help="默认 0。若贴纸白色边缘有毛刺可微调，本工具会自动阻止黑底渗入。")
+dilation = st.sidebar.slider("白色贴纸描边扩展 (Border Protect)", min_value=0, max_value=6, value=0, help="默认 0。若贴纸白色边缘有毛刺可微调，本工具会自动阻止底色渗入。")
 
 st.sidebar.markdown("---")
 wechat_online = WeChatBridge.is_wechat_running()
@@ -148,10 +168,21 @@ elif "image_source" in st.session_state and st.session_state["image_source"] == 
     image_to_process = Image.open(sample_path)
 
 if image_to_process is not None:
+    import numpy as np
+    arr = np.array(image_to_process.convert("RGB"))
+    bg_type = StickerSegmenter.detect_background_type(arr)
+    bg_tips = {
+        "checkerboard": "🎨 **底色分析**：已检测到【浅色/伪透明棋盘格】（已自动启用高精度网格抠图与纯净透明化算法）",
+        "light": "🎨 **底色分析**：已检测到【白底/浅色明底】（已自动启用高精度网格抠图与纯净透明化算法）",
+        "dark": "🎨 **底色分析**：已检测到【黑底/暗色底】（已启用智能暗底透明化算法）"
+    }
+    st.info(bg_tips.get(bg_type, "🎨 **底色分析**：已载入图片并准备切分"))
+
     with st.expander("👁️ 查看原图", expanded=False):
         st.image(image_to_process, caption="ChatGPT 生成的原图", use_container_width=True)
 
     segmenter = StickerSegmenter(
+        mode=selected_mode,
         bg_threshold=bg_threshold,
         margin=margin,
         target_size=target_size,
@@ -162,13 +193,20 @@ if image_to_process is not None:
         stickers = segmenter.process(image_to_process)
 
     if not stickers:
-        st.warning("未能检测到表情区域，请尝试调整左侧的『背景黑度阈值』或『外边距』。")
+        st.warning("未能检测到表情区域。若您上传的是标准 ChatGPT 3×3 表情包，请在左侧侧边栏将『切分模式』切换为【智能 3×3 网格】！")
     else:
-        st.success(f"✨ 成功切出 {len(stickers)} 个独立表情！已自动去除黑底并生成透明通道。")
+        st.success(f"✨ 成功切出 {len(stickers)} 个独立表情！已自动去除底色并生成透明通道。")
 
         # Auto-export stickers to disk so absolute file paths are immediately available for CF_HDROP
         output_dir = os.path.join(project_root, "output", "stickers")
         os.makedirs(output_dir, exist_ok=True)
+        import glob
+        for old_file in glob.glob(os.path.join(output_dir, "sticker_*.png")):
+            try:
+                os.remove(old_file)
+            except OSError:
+                pass
+
         saved_paths = []
         for s in stickers:
             file_path = os.path.abspath(os.path.join(output_dir, f"sticker_{s.index:02d}.png"))

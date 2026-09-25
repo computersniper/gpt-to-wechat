@@ -57,6 +57,32 @@ class TestStickerProcessing(unittest.TestCase):
             ok = WeChatBridge.copy_files_to_clipboard(files)
             self.assertTrue(ok)
 
+    def test_segmenter_grid_mode_and_checkerboard(self):
+        # Create a synthetic checkerboard with 3x3 colored stickers
+        import numpy as np
+        h, w = 600, 600
+        canvas = np.zeros((h, w, 3), dtype=np.uint8)
+        # 8x8 checkerboard pattern
+        for y in range(0, h, 8):
+            for x in range(0, w, 8):
+                val = 255 if ((x // 8) + (y // 8)) % 2 == 0 else 200
+                canvas[y:y+8, x:x+8] = val
+
+        # Place 9 colored squares (representing stickers)
+        for r in [50, 250, 450]:
+            for c in [50, 250, 450]:
+                canvas[r:r+100, c:c+100] = [200, 50, 50]
+
+        img = Image.fromarray(canvas)
+        bg_type = StickerSegmenter.detect_background_type(canvas)
+        self.assertEqual(bg_type, "checkerboard")
+
+        segmenter = StickerSegmenter(mode="auto", target_size=240)
+        stickers = segmenter.process(img)
+        self.assertEqual(len(stickers), 9)
+        self.assertEqual(stickers[0].image.size, (240, 240))
+        self.assertEqual(stickers[0].image.mode, "RGBA")
+
 
 if __name__ == "__main__":
     unittest.main()

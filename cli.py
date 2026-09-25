@@ -30,6 +30,7 @@ def process_command(args):
 
     console.print(f"[bold green]🔍 正在处理 ChatGPT 表情图片:[/bold green] {input_path}")
     segmenter = StickerSegmenter(
+        mode=args.mode,
         bg_threshold=args.threshold,
         target_size=args.size,
         margin=args.margin
@@ -99,6 +100,7 @@ def main():
     p_proc = subparsers.add_parser("process", help="切分表情图片")
     p_proc.add_argument("input", help="ChatGPT 表情大图路径")
     p_proc.add_argument("-o", "--output", help="输出目录 (默认 output/stickers)")
+    p_proc.add_argument("--mode", default="auto", choices=["auto", "grid_3x3", "grid_2x2", "contour"], help="切分模式: auto (自动), grid_3x3 (3x3网格), grid_2x2 (2x2网格), contour (暗底轮廓)")
     p_proc.add_argument("--size", type=int, default=240, help="输出正方形规格 (默认 240)")
     p_proc.add_argument("--threshold", type=int, default=35, help="背景暗色判定阈值 (默认 35)")
     p_proc.add_argument("--margin", type=int, default=8, help="边距保留 (默认 8)")

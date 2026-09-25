@@ -41,7 +41,8 @@ def split_chatgpt_stickers(
     image_path: str,
     output_dir: Optional[str] = None,
     target_size: int = 240,
-    threshold: int = 35
+    threshold: int = 35,
+    mode: str = "auto"
 ) -> Dict[str, Any]:
     """
     Intelligently segment a ChatGPT sticker sheet into individual transparent WeChat-ready emojis.
@@ -50,6 +51,7 @@ def split_chatgpt_stickers(
     :param output_dir: Directory where transparent PNG stickers will be saved. Default is 'output/stickers'.
     :param target_size: Output dimension in pixels (default 240 for WeChat recommended spec).
     :param threshold: Dark background cutoff threshold (default 35).
+    :param mode: Slicing mode ('auto', 'grid_3x3', 'grid_2x2', 'contour').
     :return: Summary with total count and list of output file paths.
     """
     if not os.path.exists(image_path):
@@ -58,7 +60,7 @@ def split_chatgpt_stickers(
     out_dir = output_dir or os.path.join(project_root, "output", "stickers")
     os.makedirs(out_dir, exist_ok=True)
 
-    segmenter = StickerSegmenter(bg_threshold=threshold, target_size=target_size)
+    segmenter = StickerSegmenter(mode=mode, bg_threshold=threshold, target_size=target_size)
     stickers = segmenter.process(image_path, output_dir=out_dir)
 
     results = []
